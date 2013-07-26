@@ -1,6 +1,7 @@
 /****************************************************************************************
 
 Copyright (C) 2013 Autodesk, Inc.
+Edited 2013 by Emre Tanirgan
 All rights reserved.
 
 Use of this software is subject to the terms of the Autodesk license agreement
@@ -82,6 +83,7 @@ public:
     bool GetPause() const { return mPause; }
 
     void convertToSkeleton();
+	void setRotationValue(Joint* joint, Frame* frame, FbxTime myTime);
 
 
     enum CameraZoomMode
@@ -144,6 +146,7 @@ private:
     Motion* motion;
     bool setAnim;
     Skeleton* skeleton;
+
 };
 
 // Initialize GLEW, must be called after the window is created.

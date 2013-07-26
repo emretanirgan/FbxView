@@ -1,8 +1,8 @@
-﻿Build started 7/18/2013 3:09:17 PM.
-     1>Project "C:\Program Files\Autodesk\FBX\FBX SDK\2014.1\samples\ViewScene\ViewScene_net2010.vcxproj" on node 2 (clean target(s)).
+﻿Build started 7/26/2013 3:38:47 PM.
+     1>Project "C:\Program Files\Autodesk\FBX\FBX SDK\2014.1\samples\FbxView\ViewScene_net2010.vcxproj" on node 2 (clean target(s)).
      1>_PrepareForClean:
          Deleting file ".\Debug\ViewScene.lastbuildstate".
-     1>Done Building Project "C:\Program Files\Autodesk\FBX\FBX SDK\2014.1\samples\ViewScene\ViewScene_net2010.vcxproj" (clean target(s)).
+     1>Done Building Project "C:\Program Files\Autodesk\FBX\FBX SDK\2014.1\samples\FbxView\ViewScene_net2010.vcxproj" (clean target(s)).
 
 Build succeeded.
 

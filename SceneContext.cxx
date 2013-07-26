@@ -1,6 +1,7 @@
 /****************************************************************************************
 
 Copyright (C) 2013 Autodesk, Inc.
+Edited 2013 by Emre Tanirgan
 All rights reserved.
 
 Use of this software is subject to the terms of the Autodesk license agreement
@@ -20,6 +21,8 @@ this software in either electronic or hard copy form.
 #include <string.h>
 #include "Skeleton.h"
 #include "Transformation.h"
+#include <fstream>
+#include <iostream>
 
 
 namespace
@@ -587,39 +590,61 @@ void SceneContext::convertToSkeleton(){
   int nodecount = mScene->GetNodeCount();
   FbxNode* rootNode = mScene->GetRootNode();
   printf("Nodes: %i \n", nodecount);
-            
-  for(int i = 0; i < nodecount; i++){
+
+  FbxTime zeroTime;
+  zeroTime.SetSecondDouble(0.0);
+
+  //We first set the skeleton, this part seems to be working fine except rotations
+  for(int i = 2; i < nodecount; i++){
     FbxNode* node = mScene->GetNode(i);
+	EFbxRotationOrder lRotationOrder;
+	node->GetRotationOrder(FbxNode::eSourcePivot, lRotationOrder);
     printf("Node #%i: %s \n", i, node->GetName());
     //If the node isn't a camera or light, it's a joint
     if(!node->GetCamera() && !node->GetLight()){
       Joint* joint = new Joint(node->GetName());
-      if(i==0){
+	  //joint->SetID(i);
+	  switch (lRotationOrder){
+	  case  eEulerXYZ: joint->SetRotationOrder("XYZ");
+		  break;
+	  case  eEulerXZY: joint->SetRotationOrder("XZY");
+		  break;
+	  case  eEulerYZX: joint->SetRotationOrder("YXZ");
+		  break;
+	  case  eEulerYXZ: joint->SetRotationOrder("YXZ");
+		  break;
+      case  eEulerZXY: joint->SetRotationOrder("ZXY");
+		  break;
+	  case  eEulerZYX: joint->SetRotationOrder("ZYX");
+		  break;
+	  case  eSphericXYZ: joint->SetRotationOrder("XYZ");
+		  break;
+
+	  }
+	  joint->SetNumChannels(3);
+      if(i==2){
         //This is the root
+	    joint->SetNumChannels(6);
         skeleton->AddJoint(joint, true);
       }
       else{
+		joint->SetNumChannels(3);
         skeleton->AddJoint(joint, false);
       }
 
       //Local translation and rotation
       FbxVector4& lcltranslate = node->EvaluateLocalTranslation(FBXSDK_TIME_INFINITE, FbxNode::eSourcePivot, false, false);
       joint->SetLocalTranslation(vec3(lcltranslate[0], lcltranslate[1], lcltranslate[2]));
-      FbxVector4& lclrotate = node->EvaluateLocalRotation(FBXSDK_TIME_INFINITE, FbxNode::eSourcePivot, false, false);
+	  FbxVector4& lclrotate = node->EvaluateLocalRotation(zeroTime, FbxNode::eSourcePivot, false, false);
+	  //printf("Local Rotation for Joint %s: %f, %f, %f \n", node->GetName(), lclrotate[0], lclrotate[1], lclrotate[2]);
       mat3 rotmat = mat3();
-      joint->SetLocalRotation(rotmat.FromEulerAnglesXYZ(vec3(lcltranslate[0], lcltranslate[1], lcltranslate[2])));
-      //EFbxRotationOrder rotOrder = EFbxRotationOrder::eEulerXYZ;
-      //node->GetRotationOrder(FbxNode::eSourcePivot, rotOrder);
-      //joint->SetDOFs(??);
-      //joint->SetJointLimits(lower,upper);*/
+      joint->SetLocalRotation(rotmat.FromEulerAnglesZXY(vec3(lclrotate[0], lclrotate[1], lclrotate[2])));
     }
   }
 
-  //Set parenting relationships -- should find a more efficient way for this
-  //in the future. Shouldn't need two loops
-  
+  //Set parenting relationships - seems to work fine
   int keyCount = 0;
-  for(int i = 0; i < nodecount; i++){
+  for(int i = 2; i < nodecount; i++){
               
     FbxNode* node = mScene->GetNode(i);
     if(!node->GetCamera() && !node->GetLight()){
@@ -633,9 +658,18 @@ void SceneContext::convertToSkeleton(){
       if(transAnimCurve){
         keyCount = transAnimCurve->KeyGetCount();
       }
+	  /*
       FbxAnimCurve* rotAnimCurve = node->LclRotation.GetCurve(mCurrentAnimLayer, FBXSDK_CURVENODE_COMPONENT_X);
+	  if(rotAnimCurve){
+		  keyCount = rotAnimCurve->KeyGetCount();
+		  //FbxAnimCurveKey lKey = rotAnimCurve->KeyGet(i);
+		 // float lKeyValue = lKey.GetValue();
+	  }
+	  */
     }
   }
+
+  //Create keyframes and set up animation - not working 
   fps = FbxTime::GetFrameRate(mScene->GetGlobalSettings().GetTimeMode());
   framecount = mScene->GetGlobalSettings().GetTimeMarkerCount();
 
@@ -643,7 +677,9 @@ void SceneContext::convertToSkeleton(){
   motion->SetFps(fps);
   //Starting time
   FbxTime myTime;
+ 
   myTime.SetSecondDouble(0.0);
+
   
 
   for(int i=0; i<keyCount; i++){
@@ -651,28 +687,141 @@ void SceneContext::convertToSkeleton(){
     Frame* frame = new Frame();
     frame->SetRootTranslation(skeleton->GetRootJoint()->GetLocalTranslation());
     frame->SetNumJoints(skeleton->m_joints.size());
-    /*for(int j=0; j<skeleton->m_joints.size(); j++){
-      Joint* joint = skeleton->m_joints.at(j);
-      frame->SetJointRotation(j,joint->GetLocalRotation());
-    }*/
-    int index = 0;
-    for(int j=0; j<nodecount; j++){
+
+	int index = 0;
+    for(int j=2; j<nodecount; j++){
       FbxNode* node = mScene->GetNode(j);
       if(!node->GetCamera() && !node->GetLight()){
         FbxVector4& lclrotate = node->EvaluateLocalRotation(myTime, FbxNode::eSourcePivot, false, false);
         vec3 rotvec = vec3(lclrotate[0], lclrotate[1], lclrotate[2]);
-        frame->SetJointRotation(index, rotvec);
+		mat3 rotmat = mat3();
+		frame->SetJointRotation(index, rotmat.FromEulerAnglesZXY(rotvec*Deg2Rad));
         index++;
       }
     }
-    //frame->Set
     motion->AppendFrame(*frame);
   }
-  /*motion->set
-  Frame* frame = new Frame();
-  frame->*/
+  std::ofstream newfile("testbvh.bvh");
+  skeleton->SaveToBVHFile(newfile);
+  motion->SaveToBVHFile(newfile, *skeleton);
 
- 
+  std::map<std::string, unsigned int> skinWeightJoints;
+  std::vector<std::vector<float>> skinWeights;
+
+  for (int i = 0; i < nodecount; i++){
+	  FbxNode* node = mScene->GetNode(i);
+	  FbxMesh* mesh = node->GetMesh();
+	  if(!mesh){
+		  continue;
+	  }
+	  int vertCount = mesh->GetControlPointsCount();
+
+	  if(vertCount == 0){
+		  continue;
+	  }
+
+	  bool hasSkin = mesh->GetDeformerCount(FbxDeformer::eSkin) > 0;
+	  int skinCount = mesh->GetDeformerCount(FbxDeformer::eSkin);
+	  int vertexCount = mesh->GetPolygonVertexCount();
+	  printf("Vertex Count: %i\n", vertexCount);
+	  int clusterCount = 0;
+	  for(int skinIndex = 0; skinIndex < skinCount; skinIndex++){
+		  clusterCount += ((FbxSkin*)(mesh->GetDeformer(skinIndex, FbxDeformer::eSkin)))->GetClusterCount();
+		  FbxSkin* skin = (FbxSkin*)mesh->GetDeformer(skinIndex, FbxDeformer::eSkin);
+		  printf("Skin #%i: Cluster count %i\n", skinIndex, skin->GetClusterCount());
+		  for (int j=0; j<skin->GetClusterCount(); j++){
+			  FbxCluster* cluster = skin->GetCluster(j);
+			  
+			  int* vertIndices = cluster->GetControlPointIndices();
+			  int vertCount = cluster->GetControlPointIndicesCount();
+			  printf("Number of ctrl points: %i\n", vertCount);
+			  double* vertWeights = cluster->GetControlPointWeights();
+			  skinWeights.resize(nodecount);
+			  
+			  /*(Emre) NOT DONE - UNCOMMENT IF YOU WANT TO CONTINUE
+			  for(int k = 0; k < vertCount; k++){
+				  skinWeights.at(k).resize(vertexCount);
+				  vertIndices[k];
+				  if(j==0){
+					  printf("Index %i: %i\n", k, vertIndices[k]);
+				  }
+				  skinWeights.at(0).at(vertIndices[k]) = vertWeights[k];
+			  }*/
+		  }
+	  }
+	  //if (clusterCount){
+
+	  //}
+  }
+  /*bxMesh* lMesh = pNode->GetMesh();
+    const int lVertexCount = lMesh->GetControlPointsCount();
+
+	const int lSkinCount = lMesh->GetDeformerCount(FbxDeformer::eSkin);
+            int lClusterCount = 0;
+            for (int lSkinIndex = 0; lSkinIndex < lSkinCount; ++lSkinIndex)
+            {
+                lClusterCount += ((FbxSkin *)(lMesh->GetDeformer(lSkinIndex, FbxDeformer::eSkin)))->GetClusterCount();
+            }
+            if (lClusterCount)
+            {
+                // Deform the vertex array with the skin deformer.
+                ComputeSkinDeformation(pGlobalPosition, lMesh, pTime, lVertexArray, pPose);
+            }
+
+    // No vertex to draw.
+    if (lVertexCount == 0)
+    {
+        return;
+    }
+
+    const VBOMesh * lMeshCache = static_cast<const VBOMesh *>(lMesh->GetUserDataPtr());
+
+    // If it has some defomer connection, update the vertices position
+    const bool lHasVertexCache = lMesh->GetDeformerCount(FbxDeformer::eVertexCache) &&
+        (static_cast<FbxVertexCacheDeformer*>(lMesh->GetDeformer(0, FbxDeformer::eVertexCache)))->IsActive();
+    const bool lHasShape = lMesh->GetShapeCount() > 0;
+    const bool lHasSkin = lMesh->GetDeformerCount(FbxDeformer::eSkin) > 0;
+    const bool lHasDeformation = lHasVertexCache || lHasShape || lHasSkin;
+
+    FbxVector4* lVertexArray = NULL;
+    if (!lMeshCache || lHasDeformation)
+    {
+        lVertexArray = new FbxVector4[lVertexCount];
+        memcpy(lVertexArray, lMesh->GetControlPoints(), lVertexCount * sizeof(FbxVector4));
+    }
+
+    if (lHasDeformation)
+    {
+        // Active vertex cache deformer will overwrite any other deformer
+        if (lHasVertexCache)
+        {
+            ReadVertexCacheData(lMesh, pTime, lVertexArray);
+        }
+        else
+        {
+            if (lHasShape)
+            {
+                // Deform the vertex array with the shapes.
+                ComputeShapeDeformation(lMesh, pTime, pAnimLayer, lVertexArray);
+            }
+
+            //we need to get the number of clusters
+            const int lSkinCount = lMesh->GetDeformerCount(FbxDeformer::eSkin);
+            int lClusterCount = 0;
+            for (int lSkinIndex = 0; lSkinIndex < lSkinCount; ++lSkinIndex)
+            {
+                lClusterCount += ((FbxSkin *)(lMesh->GetDeformer(lSkinIndex, FbxDeformer::eSkin)))->GetClusterCount();
+            }
+            if (lClusterCount)
+            {
+                // Deform the vertex array with the skin deformer.
+                ComputeSkinDeformation(pGlobalPosition, lMesh, pTime, lVertexArray, pPose);
+            }
+        }
+
+        if (lMeshCache)
+            lMeshCache->UpdateVertexPosition(lMesh, lVertexArray);
+    }*/
 }
 
 
